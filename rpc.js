@@ -510,9 +510,43 @@ var applyCustomLimits = function (Env, config) {
     });
 };
 
+const loadLocalLimitFile = function (Env, config, publicKey, cb) {
+    console.log("USING LOCAL LIMIT");
+
+    var defaultLimit = typeof(config.defaultStorageLimit) === 'number'?
+        config.defaultStorageLimit: DEFAULT_LIMIT;
+
+
+    var loadUserLimit = function () {
+        var userId;
+        if (publicKey) {
+            userId = unescapeKeyCharacters(publicKey);
+        }
+        if (userId) {
+            var limit = Env.limits[userId];
+            var l = limit && typeof limit.limit === "number" ?
+                    [limit.limit, limit.plan, limit.note] : [defaultLimit, '', ''];
+            return l;
+        }
+    };
+
+    Fs.readFile('limit-override', 'utf-8', function (err, body) {
+        try {
+            var json = JSON.parse(body);
+            if (json && typeof(json) === 'object') {
+                Env.limits = json;
+            }
+        } catch (err2) { }
+        cb(void 0, loadUserLimit());
+    });
+};
+
 // The limits object contains storage limits for all the publicKey that have paid
 // To each key is associated an object containing the 'limit' value and a 'note' explaining that limit
 var updateLimits = function (Env, config, publicKey, cb /*:(?string, ?any[])=>void*/) { // FIXME BATCH?
+    if (Env.loadLocalFile) {
+        return void loadLocalLimitFile(Env, config, publicKey, cb);
+    }
 
     if (config.adminEmail === false) {
         applyCustomLimits(Env, config);
@@ -1269,6 +1303,12 @@ var adminCommand = function (Env, ctx, publicKey, config, data, cb) {
     }
     // Handle commands here
     switch (data[0]) {
+        case 'USE_LOCAL_LIMIT':
+            return void (function () {
+                if (typeof(data[1]) !== 'boolean') { return void cb('INVALID_ARG'); }
+                Env.loadLocalFile = data[1];
+                cb(void 0, 'OK: ' + Env.loadLocalFile);
+            }());
         case 'ACTIVE_SESSIONS':
             return getActiveSessions(Env, ctx, cb);
         case 'ACTIVE_PADS':
